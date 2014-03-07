@@ -1,0 +1,23 @@
+{
+  "name": "browser-config",
+  "version": "0.0.0",
+  "description": "A simple library to store javascript configuration, in both browser and server.",
+  "main": "browser-config.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "mocha --require should tests/*.js"
+  },
+  "keywords": [
+    "configuration"
+  ],
+  "author": "Julien Muetton <julien@muetton.me>",
+  "license": "MIT",
+  "devDependencies": {
+    "should": "~3.1.3",
+    "mocha": "~1.17.1",
+    "casperjs": "~1.1.0-beta3",
+    "phantomjs": "~1.9.7-1"
+  }
+}
