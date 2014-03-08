@@ -55,12 +55,36 @@
         invalid_src: 'Invalid source object.'
     };
 
+    var ArrayProto    = Array.prototype,
+        ObjProto      = Object.prototype,
+        nativeIsArray = Array.isArray,
+        toString      = ObjProto.toString,
+        isArray       = nativeIsArray || function (obj) {
+            return toString.call(obj) == '[object Array]';
+        };
+
+    function map (obj, callback, ctx) {
+        ctx = ctx || this;
+        var index, result = {};
+        for(index in obj) {
+            if (obj.hasOwnProperty(index)) {
+                result[index] = callback.call(ctx, obj[index], index, obj);
+            }
+        }
+
+        return result;
+    }
+
+    function rest (args, start) {
+        return ArrayProto.slice.call(args, start == null ? 1 : start);
+    }
+    function first(args) {
+        return ArrayProto.slice.call(args, 0, 1).pop();
+    }
+
     // Constructor
     var Config = function (config) {
-        this.data = {};
-        if (config) {
-            this.set(config);
-        }
+        this.data = config || {};
     };
 
     // if first argument is an Array, then `method` will be mapped
@@ -78,10 +102,10 @@
     // ```
     Config.scalarOrArray = function scalarOrArray(method) {
         return function () {
-            var extra = _.rest(arguments);
-            var arg = _.first(arguments);
-            if (_.isArray(arg)) {
-                return _.map(arg, function (arg) {
+            var extra = rest(arguments);
+            var arg = first(arguments);
+            if (isArray(arg)) {
+                return map(arg, function (arg) {
                     return method.apply(this, [arg].concat(extra));
                 }, this);
             }
@@ -107,12 +131,11 @@
         return function (key, value) {
             var extra;
             if (typeof(key) !== "string") {
-                extra = _.rest(arguments, 1);
-                return _.map(key, function (value, key) {
+                extra = rest(arguments, 1);
+                return map(key, function (value, key) {
                     return method.apply(this, [key, value].concat(extra));
                 }, this);
             }
-            extra = _.rest(arguments, 2);
             return method.apply(this, arguments);
         };
     };
@@ -120,9 +143,9 @@
     // deeply read a property.
     //
     // ``` js
-    // var o = {a: {b: {c: 'foo'}}};
-    // utils.get('a.b.c');             // returns 'foo'
-    // utils.get('a.b.d', 'default');  // returns 'default' as `b` has no `d` property.
+    // var o = new Config({a: {b: {c: 'foo'}}});
+    // o.get('a.b.c');             // returns 'foo'
+    // o.get('a.b.d', 'default');  // returns 'default' as `b` has no `d` property.
     // ```
     //
     // This method is already decorated with `scalarOrArray`, that makes
@@ -130,14 +153,14 @@
     //
     // ``` js
     // var o = new Config({a: {b: {c: 'foo'}}});
-    // config.get(['a.b.c', 'a.b.d'], 'default'); // returns ['foo', 'default']
+    // o.get(['a.b.c', 'a.b.d'], 'default'); // returns ['foo', 'default']
     // ```
     Config.prototype.get = Config.scalarOrArray(function (key, alt) {
         if (!key) {
             return this.data;
         }
         var keys = key.split('.');
-        var result = _.reduce(keys, function (accumulator, property) {
+        var result = keys.reduce(function (accumulator, property) {
             if (accumulator && property in accumulator) {
                 return accumulator[property];
             }
@@ -145,6 +168,7 @@
             return ;
         }, this.data);
 
+        // return alt if result is null OR undefined
         return result != null ?
             result :
             alt;
@@ -156,8 +180,8 @@
     //
     // ``` js
     // var o = new Config({a: {b: {c: 'foo'}}});
-    // utils.setProperty('a.b.c', 'bar');
-    // utils.setProperty('d.e.f', 'baz');
+    // o.setProperty('a.b.c', 'bar');
+    // o.setProperty('d.e.f', 'baz');
     // ```
     //
     // This method is already decorated with `keyValueOrObject`, that makes
@@ -165,7 +189,7 @@
     //
     // ``` js
     // var o = new Config({a: {b: {c: 'foo'}}});
-    // utils.setProperty({
+    // o.setProperty({
     //     'a.b.c': 'bar',
     //     'd.e.f': 'baz'
     // });
@@ -173,7 +197,7 @@
     Config.prototype.set = Config.keyValueOrObject(function (key, value) {
         var keys = key.split('.');
         var prop = keys.pop();
-        var result = _.reduce(keys, function (accumulator, property) {
+        var result = keys.reduce(function (accumulator, property) {
             if (!accumulator instanceof Object) {
                 throw new Error(messages.invalid_src);
             }
@@ -189,6 +213,30 @@
         if (prop) {
             result[prop] = value;
         }
+
+        return this;
+    });
+
+    // deeply extend properties.
+    //
+    // ``` javascript
+    // var o = new Config({a: {}, b: "foo"});
+    // o.extend({ a: {c: "bar"} });
+    // o.get('a.c'); // should be "bar"
+    // o.get('b');   // should still be "foo"
+    // ```
+    //
+    // If you try to extend a property that is not an object, then
+    // it will be turn into an object.
+    //
+    // ``` javascript
+    // var o = new Config({a: {}, b: "foo"});
+    // o.extend({ a: "foo", b: {c: "bar"} });
+    // o.get('a');   // should be "foo"
+    // o.get('b.c'); // should be "bar"
+    // ```
+    Config.prototype.extend = Config.keyValueOrObject(function (key, value) {
+        return this.set(key, value);
     });
 
     // Return a Config object, representing the subset matching `key`.
@@ -208,7 +256,7 @@
     // ```
     Config.prototype.subset = Config.scalarOrArray(function (key, defaults) {
         var ret = new Config(defaults);
-        ret.set(this.get(key));
+        ret.extend(this.get(key));
 
         return ret;
     });
